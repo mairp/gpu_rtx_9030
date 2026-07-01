@@ -1,0 +1,25 @@
+# Drain the RTX 3090 eGPU before the host powers off or reboots, so a shutdown
+# never yanks the card mid-DMA. Drain-only (stops GPU workloads + waits for idle);
+# it does NOT PCIe-detach on every shutdown (that stays an explicit manual action
+# via `gpu-safe-shutdown.sh --detach`).
+#
+# Install:
+#   cp gpu-safe-shutdown.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now gpu-safe-shutdown.service
+# The drain runs on ExecStop, i.e. during system shutdown/reboot.
+[Unit]
+Description=Drain RTX 3090 eGPU before host shutdown
+DefaultDependencies=no
+Before=shutdown.target umount.target docker.service
+After=network.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/true
+ExecStop=/root/gpu_rtx_9030/gpu-safe-shutdown.sh --yes
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target
