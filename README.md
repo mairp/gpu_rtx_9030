@@ -1,4 +1,4 @@
-# gpu_rtx_9030 — RTX 3090 eGPU safety collaterals
+# gpu_rtx_3090 — RTX 3090 eGPU safety collaterals
 
 Scripts to safely power-cycle the **NVIDIA RTX 3090** in its Thunderbolt-4 eGPU
 enclosure (AOOSTAR AG02) without risking a wedged PCIe link, a hung `nvidia-smi`,
