@@ -1,0 +1,76 @@
+---
+name: local-model-ops
+description: >-
+  Hardware-aware guidance for running the local Qwen3.6 models on the RTX 3090
+  eGPU (llama-swap on this host) - which model to pick, when to think, when to
+  escalate to gpt-5/claude, and what the serving limits are. Use when asked
+  "which local model should I use", "run this on qwen", "why is the local model
+  slow / truncated / swapping", "qwen vs qwen-big", or before starting a long
+  local-model job (bebop qwen / bebop qwen-big / pi / OpenClaw locals).
+---
+
+# Local model ops — Qwen3.6 on the RTX 3090 (24 GB)
+
+Serving path: consumer -> cc-compass-shim :8088 (bebop/Claude Code only) ->
+LiteLLM :4000 -> llama-swap :8081 -> llama.cpp on the 3090. All numbers below
+were measured in /root/benchmark_models (2026-07-11 tuning pass).
+
+## Model choice
+
+- `qwen3.6-27b` (dense Q4_K_M): default for code-heavy, careful editing work.
+  ~57-65 tok/s decode with MTP spec-decode.
+- `qwen3.6-35b-a3b` (MoE, I-Compact): throughput and long-context work.
+  ~145 tok/s decode, ~2.5x faster than the 27B at EQUAL quality (both 18/20 on
+  the house battery, same failures). Prefer it when output volume dominates.
+- Only ONE model fits in 24 GB. Switching models (including any small/fast
+  model that differs from the active one) forces a full reload from disk -
+  up to minutes for the 35B. One model per session; do not ping-pong.
+- Idle TTL is 900 s: after 15 min unused the model unloads and the next call
+  pays a cold load.
+
+## Reasoning / escalation
+
+- Both locals FAIL hard multi-step math and strict output-length tasks with
+  thinking off, and prior benchmarks show thinking-on does not rescue them.
+- Light reasoning: use the `-think` variants (bebop qwen-think) - the shim
+  streams qwen reasoning back as thinking blocks. Costly on the context window.
+- Hard multi-step reasoning, tricky architecture, math: escalate to
+  `bebop compass` (gpt-5/claude via Compass). That is the lever - not a bigger
+  local model.
+
+## Serving limits (owner: /root/llama-swap/config.yaml)
+
+- Context: 65536 (both text models), KV q8_0. The shim 400s when a prompt
+  overflows QWEN_CTX - do not silently retry with a bigger number; trim.
+- Output ceiling: --n-predict 16384 server-side; shim QWEN_MAX_OUTPUT 16384;
+  bebop CLAUDE_CODE_MAX_OUTPUT_TOKENS 16000. A generation stopping near 16k is
+  the real ceiling, not a bug. (Before 2026-07-11 the cap was 4096.)
+- Samplers: server defaults are temp 0.7, top-p 0.8, top-k 20 (Qwen vendor
+  guidance for non-thinking use; beat both temp-0 and the old unset defaults
+  on the house battery, 2026-07-11). Requests that set their own
+  temperature/top_p override them; omit samplers unless you have a reason.
+- Prefix caching works (llama-server longest-common-prefix reuse, single
+  slot): turn 2..N of a session re-prefills only the appended tail. A request
+  from ANOTHER consumer in between evicts the cached prefix - expect a full
+  re-prefill after interleaved fleet traffic.
+
+## HARD RULES
+
+- Check or free VRAM and power the eGPU ONLY via the gpu-ops / fleet-control
+  skills (gpu-status.sh, gpu-safe-shutdown.sh, gpu-power-up.sh). Never
+  hand-roll docker stop, nvidia-smi kills, or PCIe pokes.
+- Serving-flag changes go through /root/benchmark_models first, then are
+  promoted to /root/llama-swap/config.yaml (git-tracked) - never edit flags
+  live without a bench + a .bak.
+- The llama-swap server is SHARED (duby, linky, havan, mira, pi, OpenClaw).
+  Long saturating jobs serialize everyone else; batch work off-hours.
+- Keep arguments literal - no command substitution, backticks, or variables
+  in commands (OpenClaw exec-approval trap). No emojis.
+
+## Notes
+
+- Repo: /root/gpu_rtx_3090 (this skill lives here; symlinked into
+  /root/.claude/skills). Sibling skills: gpu-ops (power/VRAM), fleet-control
+  (whole-stack), qmd-recall (fleet memory).
+- Benchmark provenance: /root/benchmark_models/results/ + qmd docs
+  local-arc-inference-qwen3 and qwen3.6-model-benchmark.
