@@ -31,12 +31,14 @@ were measured in /root/benchmark_models (2026-07-11 tuning pass).
 ## Reasoning / escalation
 
 - Both locals FAIL hard multi-step math and strict output-length tasks with
-  thinking off, and prior benchmarks show thinking-on does not rescue them.
-- Light reasoning: use the `-think` variants (bebop qwen-think) - the shim
-  streams qwen reasoning back as thinking blocks. Costly on the context window.
-- Hard multi-step reasoning, tricky architecture, math: escalate to
-  `bebop compass` (gpt-5/claude via Compass). That is the lever - not a bigger
-  local model.
+  thinking OFF. Measured 2026-07-11: thinking ON with a small (~4k) budget
+  FIXES exactly those failures on the 27B (3/3 repeats, tool-calls stay
+  clean) - use `bebop qwen-think` for math / strict-format work instead of
+  giving up on local. Thinking costs context-window and TTFT, so keep it off
+  for routine code/tool loops.
+- Genuinely hard reasoning (multi-step architecture, novel proofs, long
+  chains): escalate to `bebop compass` (gpt-5/claude via Compass). That is
+  the lever - not a bigger local model.
 
 ## Serving limits (owner: /root/llama-swap/config.yaml)
 
