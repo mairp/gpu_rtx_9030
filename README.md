@@ -4,7 +4,7 @@ Scripts to safely power-cycle the **NVIDIA RTX 3090** in its Thunderbolt-4 eGPU
 enclosure (AOOSTAR AG02) without risking a wedged PCIe link, a hung `nvidia-smi`,
 or corrupted in-flight work.
 
-> Folder is named `gpu_rtx_9030` per request; the physical card is an RTX **3090**.
+> Folder is named `gpu_rtx_3090` for the physical card, an RTX **3090**.
 
 ## Why this exists
 

@@ -18,7 +18,7 @@ Conflicts=shutdown.target
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/bin/true
-ExecStop=/root/gpu_rtx_9030/gpu-safe-shutdown.sh --yes
+ExecStop=/root/gpu_rtx_3090/gpu-safe-shutdown.sh --yes
 TimeoutStopSec=120
 
 [Install]

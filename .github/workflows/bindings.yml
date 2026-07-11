@@ -1,0 +1,43 @@
+name: bindings
+
+# Guards against re-introducing the old path typo (gpu_rtx_9030) or breaking the
+# scripts' self-source. The full harness (tests/test_bindings.sh) also checks live
+# host bindings — systemd unit, skill symlink, gh remote — which only exist on the
+# mairp host, so in GitHub-hosted CI we run the host-independent subset:
+#   - shell syntax of every script
+#   - each script's lib.sh source resolves
+#   - no gpu_rtx_9030 references remain anywhere in the repo
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  bindings:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Shell syntax (bash -n)
+        run: for f in *.sh; do bash -n "$f"; done
+
+      - name: Scripts source a co-located lib.sh
+        run: |
+          for f in gpu-status.sh gpu-safe-shutdown.sh gpu-power-up.sh; do
+            if grep -q 'source "\$DIR/lib.sh"' "$f"; then
+              test -f lib.sh || { echo "lib.sh missing for $f"; exit 1; }
+            fi
+          done
+
+      - name: No stale gpu_rtx_9030 references
+        run: |
+          # Exclude the guard files that must name the old path to detect it.
+          if grep -rn gpu_rtx_9030 . --exclude-dir=.git \
+               --exclude=bindings.yml --exclude=test_bindings.sh; then
+            echo "::error::stale gpu_rtx_9030 reference found"; exit 1
+          fi
+
+      - name: shellcheck (errors only)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          shellcheck -S error *.sh
