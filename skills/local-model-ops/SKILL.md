@@ -17,6 +17,12 @@ were measured in /root/benchmark_models (2026-07-11 tuning pass).
 
 ## Model choice
 
+- `qwen-auto` (via `bebop auto` or LiteLLM model `qwen-auto`): let the router
+  decide - hard-reasoning cues go to gpt-5, big jobs (>~20k-token prompt or
+  max_tokens >= 4000) go to the 35B MoE, everything else sticks to whichever
+  local is already loaded (never forces a swap; idle default 27B). Good
+  default when you do not want to think about routing. Opt-in alias only -
+  the concrete model names below behave exactly as before.
 - `qwen3.6-27b` (dense Q4_K_M): default for code-heavy, careful editing work.
   ~57-65 tok/s decode with MTP spec-decode.
 - `qwen3.6-35b-a3b` (MoE, I-Compact): throughput and long-context work.

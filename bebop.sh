@@ -6,6 +6,7 @@
 # Local models on the RTX 3090 (fully local via llama-swap; one loads at a time):
 #   bebop qwen       -> Qwen3.6-27B   (dense Q4_K_M, fast, no thinking)
 #   bebop qwen-big   -> Qwen3.6-35B-A3B  (MoE, larger)          alias: qwen35
+#   bebop auto       -> qwen-auto (LiteLLM picks: reasoning cues->gpt-5, big jobs->35B, else sticky local)
 #   bebop qwen-fp4   -> Qwen3.6-27B NVFP4  (only after Step 6 promotion; else falls back to 27B)
 #   add "-think" for the reasoning variant, e.g.  bebop qwen-think / bebop qwen-big-think
 #
@@ -22,6 +23,7 @@ bebop() {
     [qwen]=qwen3.6-27b
     [qwen-big]=qwen3.6-35b-a3b
     [qwen35]=qwen3.6-35b-a3b
+    [auto]=qwen-auto           # LiteLLM auto-router: reasoning->gpt-5, big->35b, else sticky/27b
     # [qwen-fp4]=qwen3.6-27b-nvfp4
   )
   local sel=${1:-compass} think=
