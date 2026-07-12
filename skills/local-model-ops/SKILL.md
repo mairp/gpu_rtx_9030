@@ -48,8 +48,15 @@ were measured in /root/benchmark_models (2026-07-11 tuning pass).
 
 ## Serving limits (owner: /root/llama-swap/config.yaml)
 
-- Context: 65536 (both text models), KV q8_0. The shim 400s when a prompt
-  overflows QWEN_CTX - do not silently retry with a bigger number; trim.
+- Context (raised 2026-07-12; both GGUFs trained for 262144): 27B serves
+  -c 98304, 35B serves -c 131072 (its hybrid attention makes big KV cheap;
+  the 27B at 128k was too close to the VRAM ceiling). KV q8_0. The shim 400s
+  when a prompt overflows the per-model window (QWEN_CTX_MAP) - do not
+  silently retry with a bigger number; trim, or route big jobs to the 35B.
+- bebop exports CLAUDE_CODE_MAX_CONTEXT_TOKENS (qwen 98304, qwen-big/auto
+  131072), so Claude Code auto-compacts before the shim's 400. A bebop
+  session that still hits the 400 means the env is missing (stale shell -
+  re-source bebop.sh). A fresh bebop session's fixed overhead is ~29k tokens.
 - Output ceiling: --n-predict 16384 server-side; shim QWEN_MAX_OUTPUT 16384;
   bebop CLAUDE_CODE_MAX_OUTPUT_TOKENS 16000. A generation stopping near 16k is
   the real ceiling, not a bug. (Before 2026-07-11 the cap was 4096.)
