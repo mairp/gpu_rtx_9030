@@ -26,6 +26,17 @@ bebop() {
     [auto]=qwen-auto           # LiteLLM auto-router: reasoning->gpt-5, big->35b, else sticky/27b
     # [qwen-fp4]=qwen3.6-27b-nvfp4
   )
+  # Real served context per backend (llama-swap `-c`, raised 2026-07-12). Claude Code
+  # honors CLAUDE_CODE_MAX_CONTEXT_TOKENS for non-claude-* models: telling it the true
+  # window makes it AUTO-COMPACT before the shim's overflow 400 — frontier behavior
+  # instead of "prompt exceeds context, start a new session". auto uses the 35B window
+  # because the qwen-auto router sends every big job to the 35B.
+  local -A ctxs=(
+    [qwen]=98304
+    [qwen-big]=131072
+    [qwen35]=131072
+    [auto]=131072
+  )
   local sel=${1:-compass} think=
   case "$sel" in
     -*) sel=compass ;;                 # no backend given, just claude args -> compass
@@ -51,15 +62,18 @@ bebop() {
   # thrash, minutes per switch). Same model = zero swaps; the "cost" of running
   # a title-gen on the big model is noise next to a single reload.
   # MAX_THINKING_TOKENS makes Claude Code request thinking; the shim auto-detects it
-  # and streams qwen's reasoning back as Anthropic thinking blocks (context-hungry on 32k).
+  # and streams qwen's reasoning back as Anthropic thinking blocks (context-hungry).
+  local ctx=${ctxs[$sel]:-98304}
   if [ -n "$think" ]; then
     ANTHROPIC_BASE_URL=http://127.0.0.1:8088 ANTHROPIC_AUTH_TOKEN=dummy \
     ANTHROPIC_MODEL=$model ANTHROPIC_SMALL_FAST_MODEL=$model \
+    CLAUDE_CODE_MAX_CONTEXT_TOKENS=$ctx \
     MAX_THINKING_TOKENS=8000 CLAUDE_CODE_MAX_OUTPUT_TOKENS=16000 \
     claude "$@"
   else
     ANTHROPIC_BASE_URL=http://127.0.0.1:8088 ANTHROPIC_AUTH_TOKEN=dummy \
     ANTHROPIC_MODEL=$model ANTHROPIC_SMALL_FAST_MODEL=$model \
+    CLAUDE_CODE_MAX_CONTEXT_TOKENS=$ctx \
     CLAUDE_CODE_MAX_OUTPUT_TOKENS=16000 \
     claude "$@"
   fi
