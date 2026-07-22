@@ -78,3 +78,53 @@ bebop() {
     claude "$@"
   fi
 }
+
+# antares: one-shot text-in / text-out call to the local antares-1b (Granite-4.0)
+# model via the fleet LiteLLM gateway (:4000). Deliberately NOT wired into an agent
+# harness (pi/Claude Code): a 1B rambles under a big agent system-prompt+tools and
+# runs into the output cap. This path sends a concise system prompt, NO tools, and
+# just prints the reply. Usage:  antares -p "your prompt"   (or: antares "your prompt")
+unalias antares 2>/dev/null
+antares() {
+  local prompt=""
+  case "${1:-}" in
+    -p|--prompt) shift; prompt="$*" ;;
+    "" ) : ;;                       # no arg -> read stdin below
+    * ) prompt="$*" ;;
+  esac
+  [ -z "$prompt" ] && prompt="$(cat)"   # allow: echo "..." | antares
+  if [ -z "$prompt" ]; then
+    echo "usage: antares -p \"your prompt\"   (or: antares \"your prompt\", or pipe via stdin)" >&2
+    return 2
+  fi
+
+  local key
+  key=$(grep -m1 '^LITELLM_MASTER_KEY=' /root/litellm/.env | cut -d= -f2)
+  if [ -z "$key" ]; then
+    echo "antares: could not read LITELLM_MASTER_KEY from /root/litellm/.env" >&2
+    return 1
+  fi
+
+  # jq builds the request body so the prompt is safely JSON-escaped (no shell-quoting traps).
+  local body
+  body=$(jq -n --arg p "$prompt" '{
+    model: "antares",
+    messages: [
+      {role:"system", content:"You are a concise assistant. Answer directly and stop."},
+      {role:"user", content:$p}
+    ],
+    max_tokens: 2048,
+    temperature: 0
+  }')
+
+  local resp
+  resp=$(curl -s -m 120 http://127.0.0.1:4000/v1/chat/completions \
+    -H "Authorization: Bearer $key" -H 'Content-Type: application/json' \
+    -d "$body")
+
+  # Print the reply; surface API errors instead of a silent empty line.
+  echo "$resp" | jq -e -r '.choices[0].message.content' 2>/dev/null && return 0
+  echo "antares: request failed ->" >&2
+  echo "$resp" | jq -r '.error.message // .message // .' 2>/dev/null >&2 || echo "$resp" >&2
+  return 1
+}
