@@ -52,6 +52,19 @@ PCIe link width should be **x4** on TB4; `< x4` means a degraded Thunderbolt tun
 - `gpu-status.sh` says "no NVIDIA GPU on the bus" → it's detached; power on + `gpu-power-up.sh`.
 - PCIe link width `< x4` → Thunderbolt tunnel degraded; reseat the USB4 cable (known flaky mode,
   also alerted in the observability stack).
+- **GPU "fallen off the bus" (Xid 79) — the wedge** → `gpu-status.sh` shows it ENUMERATED but
+  UNRESPONSIVE: `nvidia-smi` returns "No devices were found", PCIe width prints blank (the
+  DEGRADED banner), and a `thunderbolt` kworker is stuck in D-state. **Only an OS reboot recovers
+  this** — the driver's Xid 154 recovery action is literally "OS Reboot". Do NOT try
+  `--detach`/PCIe rescan/TB re-authorize: they queue onto the wedged TB kworker and hang (in
+  D-state, unkillable), and you still end up rebooting. Correct path:
+  ```
+  /root/gpu_rtx_3090/gpu-power-up.sh --clear-wedge   # safe: kills stray smi pollers, diagnoses
+  reboot                                             # host reboot; fleet.service restarts llama-swap
+  ```
+  This is a physical eGPU/TB4 endurance fault (reliably triggered by sustained heavy load such as
+  the coder `code_hard` benchmark), not VRAM. `gpu-status.sh` / `gpu-safe-shutdown.sh` /
+  `gpu-power-up.sh` all now detect the wedge and refuse the operations that would hang (exit 3).
 
 ## HARD RULES
 

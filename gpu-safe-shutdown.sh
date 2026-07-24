@@ -29,6 +29,16 @@ if ! gpu_present; then
   exit 0
 fi
 
+# Refuse to hot-remove a card that has fallen off the bus: the PCIe remove
+# queues onto the stuck thunderbolt kworker and hangs this script in D-state
+# too (unkillable), and it STILL needs a reboot. Detect and bail out.
+if gpu_off_bus_wedge; then
+  err "GPU has fallen off the bus (enumerated but unresponsive, Xid 79)."
+  err "Do NOT --detach: PCIe remove will hang on the wedged TB kworker and needs a reboot anyway."
+  echo "  -> run: $DIR/gpu-power-up.sh --clear-wedge   (safe cleanup) then reboot the host." >&2
+  exit 3
+fi
+
 # --- 1. stop GPU-holding containers ---
 log "draining GPU workloads…"
 stop_gpu_containers

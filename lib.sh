@@ -42,6 +42,53 @@ gpu_present() {
   [ -n "$(gpu_pci_funcs)" ]
 }
 
+# Is the driver able to actually talk to the card? (present on the bus but
+# unresponsive => "fallen off the bus" wedge.)
+# NOTE: `nvidia-smi -L` exits 0 even when it prints "No devices found." on a
+# dead card, so we must match an actual "GPU N:" line, not the exit code.
+gpu_responsive() {
+  command -v nvidia-smi >/dev/null 2>&1 || return 1
+  timeout 8 nvidia-smi -L 2>/dev/null | grep -qE '^GPU [0-9]+:'
+}
+
+# Detect the Xid 79 "GPU has fallen off the bus" wedge. In this state the PCI
+# function stays ENUMERATED (so gpu_present is true) but the GPU is dead:
+# nvidia-smi returns "No devices were found", pcie.link.width reads blank, and a
+# thunderbolt kworker is typically stuck in uninterruptible (D) sleep. The
+# driver's own Xid 154 recovery action is "OS Reboot". detach+rescan does NOT
+# recover this — the PCIe remove/rescan queues onto the already-wedged
+# thunderbolt kworker and hangs the same way. ONLY an OS reboot clears it.
+# Returns 0 (true) when the wedge is detected.
+gpu_off_bus_wedge() {
+  gpu_present || return 1        # nothing on the bus => detached/off, not wedged
+  gpu_responsive && return 1     # driver can talk to it => healthy, not wedged
+  return 0
+}
+
+# Recent "fallen off the bus" / Xid 79 / Xid 154 evidence in the kernel ring
+# buffer (best-effort; needs readable dmesg). Prints matching lines.
+gpu_bus_fault_dmesg() {
+  dmesg -T 2>/dev/null | grep -iE "fallen off the bus|Xid.*: (79|154)|recovery action" | tail -6 || true
+}
+
+# Thunderbolt worker threads stuck in uninterruptible (D) sleep — the signature
+# that a PCIe remove/rescan will hang rather than recover.
+gpu_tb_dstate_workers() {
+  ps -eo stat,comm 2>/dev/null | awk '$1 ~ /^D/ && $2 ~ /thunderbolt/ {print $2}' || true
+}
+
+# Kill stray `nvidia-smi -l/--loop` pollers that keep an fd open on /dev/nvidia*
+# against a dead card (they block a clean module unload and spin uselessly).
+kill_stray_smi_pollers() {
+  local pids
+  pids="$(pgrep -f 'nvidia-smi.*(-l|--loop)' 2>/dev/null || true)"
+  [ -z "$pids" ] && return 0
+  log "killing stray nvidia-smi pollers: $pids"
+  # shellcheck disable=SC2086
+  kill $pids 2>/dev/null || true
+  sleep 1
+}
+
 # Block until no compute apps remain, or timeout (seconds). Returns 0 if idle.
 wait_for_gpu_idle() {
   local timeout="${1:-120}" t0 now

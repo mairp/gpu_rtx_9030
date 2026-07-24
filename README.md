@@ -66,6 +66,20 @@ auto-detach, to avoid surprising PCIe removals during normal reboots).
 - PCIe link width `< x4` → Thunderbolt tunnel degraded (reseat the USB4 cable);
   this is the eGPU's known flaky failure mode and is alerted in the observability
   stack too.
+- **GPU "fallen off the bus" (Xid 79) — the wedge.** `gpu-status.sh` shows the card
+  ENUMERATED but UNRESPONSIVE: `nvidia-smi` prints "No devices were found", the PCIe
+  width is blank, and a `thunderbolt` kworker is stuck in uninterruptible (D) sleep.
+  **Only an OS reboot recovers this** — the driver's Xid 154 recovery action is
+  literally "OS Reboot". Do **not** `--detach` / PCIe-rescan / TB-reauthorize: each
+  queues onto the wedged TB kworker and hangs in D-state (unkillable), and you still
+  end up rebooting. All three scripts now detect the wedge and exit 3 instead of
+  hanging. Correct path:
+  ```
+  sudo ./gpu-power-up.sh --clear-wedge   # safe: kills stray nvidia-smi pollers, diagnoses
+  sudo reboot                            # fleet.service restarts llama-swap on boot
+  ```
+  Reliably triggered by sustained heavy load (e.g. the coder `code_hard` benchmark) —
+  a physical eGPU/TB4 endurance fault, not VRAM.
 
 > Requires root (PCIe remove/rescan + persistence control). All scripts are
 > idempotent and no-op cleanly if the card is already absent/idle.
